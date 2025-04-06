@@ -103,6 +103,8 @@ public class Client {
                 System.out.println("File upload dropped: \"" + fileToSend.getName() + "\". Server queue full.");
             } else if ("FILE_OK".equals(response)) {
                 System.out.println("Uploaded " + fileToSend.getName());
+            } else if ("DUPLICATE".equals(response)) {
+                System.out.println("Duplicate upload for: \"" + fileToSend.getName() + "\" detected. File not saved.");
             }
         } catch (IOException e) {
             e.printStackTrace();

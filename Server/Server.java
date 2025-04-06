@@ -20,13 +20,20 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.*;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Optional;
 import java.util.concurrent.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Base64;
 
 public class Server extends Application {
 
     private ObservableList<String> videoList = FXCollections.observableArrayList();
     private final File uploadsDir = new File("uploads");
+    private static final Map<String, String> uploadedFileHashes = new HashMap<>();
     // ScheduledExecutorService for closing the preview window after 10 seconds
     // https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ScheduledExecutorService.html
     private final ScheduledExecutorService previewScheduler = Executors.newScheduledThreadPool(1);
@@ -201,20 +208,30 @@ public class Server extends Application {
                     String fileName = dis.readUTF();
                     long fileSize = dis.readLong();
 
+                    MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+                    DigestInputStream disWithHash = new DigestInputStream(dis, sha256);
+
                     byte[] data = new byte[(int) fileSize];
                     int totalRead = 0;
                     while (totalRead < fileSize) {
-                        int read = dis.read(data, totalRead, (int) (fileSize - totalRead));
+                        int read = disWithHash.read(data, totalRead, (int) (fileSize - totalRead));
                         if (read == -1)
                             break;
                         totalRead += read;
                     }
 
+                    byte[] fileHashBytes = sha256.digest();
+                    String fileHash = Base64.getEncoder().encodeToString(fileHashBytes);
+
                     FileUploadTask task = new FileUploadTask(fileName, data);
-                    if (!uploadQueue.offer(task)) {
+                    if (uploadedFileHashes.containsKey(fileName) && uploadedFileHashes.get(fileName).equals(fileHash)) {
+                        dos.writeUTF("DUPLICATE");
+                    } else if (!uploadQueue.offer(task)) {
                         System.out.println("File dropped due to full queue (leaky bucket design): " + fileName);
                         dos.writeUTF("QUEUE_FULL");// reply upload status to server
+
                     } else {
+                        uploadedFileHashes.put(fileName, fileHash);
                         dos.writeUTF("FILE_OK");
                     }
                 } catch (IOException e) {
