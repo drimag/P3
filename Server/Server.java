@@ -208,7 +208,14 @@ public class Server extends Application {
                     String fileName = dis.readUTF();
                     long fileSize = dis.readLong();
 
-                    MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+                    MessageDigest sha256;
+                    try {
+                        sha256 = MessageDigest.getInstance("SHA-256");
+                    } catch (NoSuchAlgorithmException e) {
+                        System.err.println("SHA-256 algorithm not available: " + e.getMessage());
+                        dos.writeUTF("SERVER_ERROR");
+                        continue;
+                    }
                     DigestInputStream disWithHash = new DigestInputStream(dis, sha256);
 
                     byte[] data = new byte[(int) fileSize];
