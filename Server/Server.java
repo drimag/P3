@@ -15,6 +15,9 @@ import javafx.scene.media.MediaView;
 import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 import javafx.util.Duration;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.ButtonBar;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -34,6 +37,7 @@ public class Server extends Application {
     private ObservableList<String> videoList = FXCollections.observableArrayList();
     private static final File HASH_FILE = new File("hashes.ser");
     private final File uploadsDir = new File("uploads");
+    private final File tempDir = new File("temp");
     private static final Map<String, String> uploadedFileHashes = new HashMap<>();
     // ScheduledExecutorService for closing the preview window after 10 seconds
     // https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ScheduledExecutorService.html
@@ -45,6 +49,7 @@ public class Server extends Application {
     private ExecutorService consumerPool;
     private int consumerCount = 1; // default number of consumer threads
     private int queueCapacity = 1; // default maximum queue length
+    private boolean enableCompression = false;
 
     private static class FileUploadTask {
         String fileName;
@@ -96,6 +101,25 @@ public class Server extends Application {
             return;
         }
 
+        Alert compressionDialog = new Alert(Alert.AlertType.CONFIRMATION);
+        compressionDialog.setTitle("Compression Configuration");
+        compressionDialog.setContentText("Would you like to enable video compression?");
+
+        ButtonType yesButton = new ButtonType("Yes", ButtonBar.ButtonData.YES);
+        ButtonType noButton = new ButtonType("No", ButtonBar.ButtonData.NO);
+
+        compressionDialog.getButtonTypes().setAll(yesButton, noButton);
+
+        Optional<ButtonType> compressionResult = compressionDialog.showAndWait();
+        enableCompression = compressionResult.isPresent() && compressionResult.get() == yesButton;
+
+        if (!uploadsDir.exists()) {
+            uploadsDir.mkdirs();
+        }
+        if (!tempDir.exists()) {
+            tempDir.mkdirs();
+        }
+
         // Initialize bounded queue and fixed consumer thread pool
         uploadQueue = new ArrayBlockingQueue<>(queueCapacity);
         consumerPool = Executors.newFixedThreadPool(consumerCount);
@@ -104,35 +128,40 @@ public class Server extends Application {
                 while (true) {
                     try {
                         FileUploadTask task = uploadQueue.take();
-
-                        // Create temporary file for the original upload
-                        File tempFile = new File(uploadsDir, "temp_" + task.fileName);
-                        try (FileOutputStream fos = new FileOutputStream(tempFile)) {
-                            fos.write(task.fileData);
-                        }
-
-                        // Final output path
                         File outputFile = new File(uploadsDir, task.fileName);
 
-                        // Compress the video using FFmpeg
-                        boolean compressionSuccess = compressVideo(tempFile.getAbsolutePath(),
-                                outputFile.getAbsolutePath());
-
-                        // If compression fails, use the original file
-                        if (!compressionSuccess) {
+                        if (!enableCompression) {
                             try (FileOutputStream fos = new FileOutputStream(outputFile)) {
                                 fos.write(task.fileData);
                             }
-                            System.out.println("Compression failed for: " + task.fileName + ", using original file");
                         } else {
-                            System.out.println("Successfully compressed: " + task.fileName);
-                        }
+                            // Create temporary file for the original upload
+                            File tempFile = new File(tempDir, "temp_" + task.fileName);
+                            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                                fos.write(task.fileData);
+                            }
+                            File tempCompressed = new File(tempDir, "Comp_" + task.fileName);
 
-                        // Clean up the temporary file
-                        if (!tempFile.delete()) {
-                            tempFile.deleteOnExit();
-                        }
+                            boolean compressionSuccess = compressVideo(tempFile.getAbsolutePath(),
+                                    tempCompressed.getAbsolutePath(), outputFile.getAbsolutePath());
 
+                            if (!compressionSuccess) {
+                                try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                                    fos.write(task.fileData);
+                                }
+                                System.out
+                                        .println("Compression failed for: " + task.fileName + ", using original file");
+                            } else {
+                                System.out.println("Successfully compressed: " + task.fileName);
+                            }
+
+                            if (!tempFile.delete()) {
+                                tempFile.deleteOnExit();
+                            }
+                            if (!tempCompressed.delete()) {
+                                tempCompressed.deleteOnExit();
+                            }
+                        }
                         Platform.runLater(this::refreshVideoList);
                         // Keep the delay for demonstration purposes
                         Thread.sleep(3000);
@@ -146,9 +175,6 @@ public class Server extends Application {
             });
         }
 
-        if (!uploadsDir.exists()) {
-            uploadsDir.mkdirs();
-        }
         refreshVideoList();
 
         // Set up JavaFX ListView to show uploaded videos.
@@ -280,7 +306,7 @@ public class Server extends Application {
         }
     }
 
-    private boolean compressVideo(String inputPath, String outputPath) {
+    private boolean compressVideo(String inputPath, String compressedPath, String outputPath) {
         try {
             // Build the FFmpeg command - adjust parameters based on your compression needs
             ProcessBuilder processBuilder = new ProcessBuilder(
@@ -293,25 +319,24 @@ public class Server extends Application {
                     "-strict", "experimental", // Allow experimental codecs
                     "-b:a", "128k", // Audio bitrate
                     "-y", // Overwrite output file if it exists
-                    outputPath);
+                    compressedPath);
 
-            // Redirect error stream to output stream
-            processBuilder.redirectErrorStream(true);
+            processBuilder.redirectOutput(new File("ffmpeg_output.log"));
+            processBuilder.redirectError(new File("ffmpeg_error.log"));
 
             // Start the process
             Process process = processBuilder.start();
-
-            // Read and print the output
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    System.out.println("FFmpeg: " + line);
-                }
-            }
-
-            // Wait for the process to complete and get the exit value
             int exitCode = process.waitFor();
-            return exitCode == 0;
+
+            if (exitCode == 0) {
+                // Move the compressed file to outputPath
+                Files.move(new File(compressedPath).toPath(), new File(outputPath).toPath(),
+                        StandardCopyOption.REPLACE_EXISTING);
+                return true;
+            } else {
+                System.err.println("FFmpeg compression failed. Check ffmpeg_error.log for details.");
+                return false;
+            }
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
             return false;
