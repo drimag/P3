@@ -4,7 +4,8 @@ GARCIA, Aurelio
 PARK, Sehyun
 SILLONA, Eugene
 
-Client (Main Computer - Windows 10 OS):
+# Client 
+(Main Computer - Windows 10 OS):
 1. Ensure Java 17.0.12 or later is installed.
 2. Open a terminal/command prompt in the Client folder.
 3. Run the client by executing:
@@ -14,7 +15,8 @@ Client (Main Computer - Windows 10 OS):
 6. Select the folders (one per producer thread) containing your MP4 video files.
 6.1 I've made 2 folders inside Client folder, add more folder if you want more than 2 Producer Thread
 
-Server (Virtual Machine - Windows OS(10/11)):
+# Server 
+(Virtual Machine - Windows OS(10/11)):
 1. Ensure that the Server folder is moved to the VM
 2. Ensure Java 17.0.12 or later is installed.
 3. Run the server by executing the provided run.bat file.
