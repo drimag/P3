@@ -295,7 +295,9 @@ public class Server extends Application {
     public static void loadHashes() {
         if (HASH_FILE.exists()) {
             try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(HASH_FILE))) {
-                uploadedFileHashes = (Map<String, String>) ois.readObject();
+                Map<String, String> loadedHashes = (Map<String, String>) ois.readObject();
+                uploadedFileHashes.clear(); // Clear existing entries
+                uploadedFileHashes.putAll(loadedHashes); // Load new ones
             } catch (IOException | ClassNotFoundException e) {
                 e.printStackTrace();
             }

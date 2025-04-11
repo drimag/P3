@@ -18,7 +18,7 @@ public class Client {
         }
 
         // Asking for Server IP Address, with a default IP to my network.
-        String serverIp = JOptionPane.showInputDialog(null, "Enter the server IP address:", "192.168.x.x");
+        String serverIp = JOptionPane.showInputDialog(null, "Enter the server IP address:", "192.168.0.176");
         if (serverIp == null || serverIp.trim().isEmpty()) {
             System.out.println("No server IP entered. Exiting.");
             return;
