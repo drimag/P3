@@ -32,6 +32,7 @@ import java.util.Base64;
 public class Server extends Application {
 
     private ObservableList<String> videoList = FXCollections.observableArrayList();
+    private static final File HASH_FILE = new File("hashes.ser");
     private final File uploadsDir = new File("uploads");
     private static final Map<String, String> uploadedFileHashes = new HashMap<>();
     // ScheduledExecutorService for closing the preview window after 10 seconds
@@ -188,6 +189,7 @@ public class Server extends Application {
 
     // Server method: continuously listens for client connections.
     private void startServer() {
+        loadHashes();
         int port = 5000;
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             while (true) {
@@ -235,10 +237,10 @@ public class Server extends Application {
                         dos.writeUTF("DUPLICATE");
                     } else if (!uploadQueue.offer(task)) {
                         System.out.println("File dropped due to full queue (leaky bucket design): " + fileName);
-                        dos.writeUTF("QUEUE_FULL");// reply upload status to server
-
+                        dos.writeUTF("QUEUE_FULL");
                     } else {
                         uploadedFileHashes.put(fileName, fileHash);
+                        saveHashes();
                         dos.writeUTF("FILE_OK");
                     }
                 } catch (IOException e) {
@@ -279,6 +281,24 @@ public class Server extends Application {
             }
         } catch (IOException | InterruptedException ex) {
             ex.printStackTrace();
+        }
+    }
+
+    public static void saveHashes() {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(HASH_FILE))) {
+            oos.writeObject(uploadedFileHashes);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void loadHashes() {
+        if (HASH_FILE.exists()) {
+            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(HASH_FILE))) {
+                uploadedFileHashes = (Map<String, String>) ois.readObject();
+            } catch (IOException | ClassNotFoundException e) {
+                e.printStackTrace();
+            }
         }
     }
 
