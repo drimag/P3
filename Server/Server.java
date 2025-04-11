@@ -104,13 +104,37 @@ public class Server extends Application {
                 while (true) {
                     try {
                         FileUploadTask task = uploadQueue.take();
-                        File outputFile = new File(uploadsDir, task.fileName);
-                        try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+
+                        // Create temporary file for the original upload
+                        File tempFile = new File(uploadsDir, "temp_" + task.fileName);
+                        try (FileOutputStream fos = new FileOutputStream(tempFile)) {
                             fos.write(task.fileData);
                         }
+
+                        // Final output path
+                        File outputFile = new File(uploadsDir, task.fileName);
+
+                        // Compress the video using FFmpeg
+                        boolean compressionSuccess = compressVideo(tempFile.getAbsolutePath(),
+                                outputFile.getAbsolutePath());
+
+                        // If compression fails, use the original file
+                        if (!compressionSuccess) {
+                            try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                                fos.write(task.fileData);
+                            }
+                            System.out.println("Compression failed for: " + task.fileName + ", using original file");
+                        } else {
+                            System.out.println("Successfully compressed: " + task.fileName);
+                        }
+
+                        // Clean up the temporary file
+                        if (!tempFile.delete()) {
+                            tempFile.deleteOnExit();
+                        }
+
                         Platform.runLater(this::refreshVideoList);
-                        // Delay for 3 sec, this is just for demonstration purposes.
-                        // Since the video size is too small to observe the queue behavior,
+                        // Keep the delay for demonstration purposes
                         Thread.sleep(3000);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -253,6 +277,44 @@ public class Server extends Application {
                 clientSocket.close();
             } catch (IOException ignore) {
             }
+        }
+    }
+
+    private boolean compressVideo(String inputPath, String outputPath) {
+        try {
+            // Build the FFmpeg command - adjust parameters based on your compression needs
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                    "ffmpeg",
+                    "-i", inputPath,
+                    "-vcodec", "libx264", // Use H.264 codec
+                    "-crf", "28", // Constant Rate Factor (lower = better quality, higher = smaller file)
+                    "-preset", "fast", // Encoding speed preset (slower = better compression)
+                    "-acodec", "aac", // Audio codec
+                    "-strict", "experimental", // Allow experimental codecs
+                    "-b:a", "128k", // Audio bitrate
+                    "-y", // Overwrite output file if it exists
+                    outputPath);
+
+            // Redirect error stream to output stream
+            processBuilder.redirectErrorStream(true);
+
+            // Start the process
+            Process process = processBuilder.start();
+
+            // Read and print the output
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println("FFmpeg: " + line);
+                }
+            }
+
+            // Wait for the process to complete and get the exit value
+            int exitCode = process.waitFor();
+            return exitCode == 0;
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
+            return false;
         }
     }
 
