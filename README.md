@@ -36,3 +36,14 @@ SILLONA, Eugene
  	5:25 ~ 8:18 -> Duplicate Detection
   	8:18 ~ 12:09 -> Video Compression
 ```
+
+## Notes
+
+- Git LFS is used for large assets (e.g., demo videos). Make sure to install Git LFS if cloning the repo.
+- **Do not download this repository as a ZIP** — GitHub ZIP downloads do **not** include the actual LFS files (e.g., the `.mp4` demo video).  
+  To access the full video and all files correctly, you must **clone the repository** using:
+  ```bash
+  git clone https://github.com/drimag/P3.git
+  ```
+  or download the .mp4 by itself from this repository
+	
